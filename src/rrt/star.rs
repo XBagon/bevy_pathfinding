@@ -132,7 +132,6 @@ impl RRTStar {
                     self.costs.insert(node, new_cost);
                     self.graph.add_edge(new_node, node, ());
 
-                    std::fs::write("out.log", format!("{}:{}\n\n\n{:#?}", new_node.0.0.into_raw_parts().0, node.0.0.into_raw_parts().0, Dot::with_config(&self.graph, &[Config::EdgeNoLabel]))).unwrap();
                     self.recalculate_path_costs(node, 0);
                 }
             }
