@@ -3,6 +3,7 @@ use rapier2d::na::{Point2, Vector2};
 use bevy_pathfinding::rrt::{GoalBias, RandomPointArea, RRTStar};
 use bevy_prototype_lyon::prelude::*;
 use petgraph::dot::{Config, Dot};
+use rapier2d::prelude::{ColliderBuilder, Translation};
 use bevy_pathfinding::rrt::Handle as RRTHandle;
 
 #[test]
@@ -25,9 +26,12 @@ fn setup(mut commands: Commands) {
 }
 
 fn setup_rrt() -> RRTStar {
-    let mut rectangle = RandomPointArea::new(-600., 600., -200., 200.);
+    let  rectangle = RandomPointArea::new(-600., 600., -200., 200.);
     let bias = GoalBias { probability: 0.2, };
-    RRTStar::new(Point2::new(-500.0, 150.0), Point2::new(500.0, -150.0), Box::new(move |rrt| bias.bias_point(rrt, rectangle.random_point()) ), 20.)
+    let mut rrt = RRTStar::new(Point2::new(-500.0, 150.0), Point2::new(500.0, -150.0), Box::new(move |rrt| bias.bias_point(rrt, rectangle.random_point()) ), 20.);
+    rrt.add_collider(ColliderBuilder::ball(100.0).position(Translation::new(300., 20.).into()).build());
+    rrt.add_collider(ColliderBuilder::triangle(Point2::new(-120., -50.), Point2::new(-200., 50.), Point2::new(20., 80.)).build());
+    rrt
 }
 
 #[derive(Component)]
@@ -46,7 +50,6 @@ fn draw_rrt(mut commands: Commands, rrt: Res<RRTStar>, q: Query<Entity, With<Gra
             color: Color::RED,
         };
 
-        info!("Drawing");
         for handle in rrt.graph.nodes() {
             let collider = &rrt.space[handle.0];
             let position = convert_vec(collider.position().translation.vector);
@@ -79,7 +82,7 @@ fn draw_rrt(mut commands: Commands, rrt: Res<RRTStar>, q: Query<Entity, With<Gra
             let mut current_node;
             let mut last_node = closest_node;
             loop {
-                let mut neighbors = rrt.graph.neighbors_directed(last_node, petgraph::Direction::Incoming);
+                let neighbors = rrt.graph.neighbors_directed(last_node, petgraph::Direction::Incoming);
                 if let Some(next) = neighbors.min_by_key(|a| rrt.costs[a]) {
                     current_node = next;
                     draw_edge(&mut commands, &rrt, last_node, current_node, Color::GREEN);
@@ -94,7 +97,7 @@ fn draw_rrt(mut commands: Commands, rrt: Res<RRTStar>, q: Query<Entity, With<Gra
     }
 }
 
-fn draw_edge(mut commands: &mut Commands, rrt: &RRTStar, a: RRTHandle, b: RRTHandle, color: Color) { //TODO:
+fn draw_edge(commands: &mut Commands, rrt: &RRTStar, a: RRTHandle, b: RRTHandle, color: Color) {
     let a = &rrt.space[a.0];
     let b = &rrt.space[b.0];
 

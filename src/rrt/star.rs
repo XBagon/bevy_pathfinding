@@ -1,7 +1,5 @@
 use std::collections::BTreeMap;
-use std::collections::btree_map::Entry;
 use ordered_float::OrderedFloat;
-use petgraph::dot::{Config, Dot};
 use petgraph::prelude::*;
 use rapier2d::{
     na::{self, distance_squared, Point2},
@@ -44,7 +42,7 @@ impl RRTStar {
     }
 
     fn insert_node(&mut self, location: Point2<f32>) -> Handle {
-        let collider = ColliderBuilder::ball(0.0).position(location.into()).build();
+        let collider = ColliderBuilder::ball(0.0).position(location.into()).collision_groups(InteractionGroups::new(0b0001, !0)).build();
         let handle = self.space.insert(collider).into();
         self.graph.add_node(handle);
         handle
@@ -66,7 +64,7 @@ impl RRTStar {
 
         let mut nodes_in_radius = Vec::new();
         query_pipeline.intersections_with_shape(
-            &self.space, &point.into(), &Ball::new(self.max_distance*(1. + 1.001)) /*FIXME: could be a different value!*/, InteractionGroups::all(), None, |handle| {
+            &self.space, &point.into(), &Ball::new(self.max_distance*(1. + 1.001)) /*FIXME: could be a different value!*/, InteractionGroups::new(!0, 0b0011), None, |handle| {
                 nodes_in_radius.push(handle.into());
                 true
             }
@@ -79,7 +77,7 @@ impl RRTStar {
         let best_node = nodes_in_radius_iter.next().expect("self.max_distance has to be smaller than the radius");
 
         let cost = self.costs[&best_node] + na::distance(&self.position(best_node), &point);
-        /* Old version - doesn't work with well with optimizing paths
+        /* Old version - doesn't work well with optimizing paths
         if let Some(closest_node) = self.closest_node  {
             if cost + na::distance(&point, &self.position(self.goal)) > self.costs[&closest_node] {
                 return; //New nodes cost + direct way to goal from there is worse then current best
@@ -126,6 +124,7 @@ impl RRTStar {
                 } else { //just an improved path
                     let mut incoming_edges = self.graph.edges_directed(node, Direction::Incoming);
                     let old_incoming = incoming_edges.next().unwrap();
+                    let old_incoming = (old_incoming.0, old_incoming.1);
                     debug_assert!(incoming_edges.next().is_none());
                     self.graph.remove_edge(old_incoming.0, old_incoming.1).unwrap();
 
@@ -188,18 +187,29 @@ impl RRTStar {
         let mut query_pipeline = QueryPipeline::new();
         query_pipeline.update(&IslandManager::new(), &RigidBodySet::new(), &self.space);
         if let Some((handle, projection)) = query_pipeline.project_point(
-            &self.space, &point, true, InteractionGroups::new(!0, !0b0010), None
+            &self.space, &point, true, InteractionGroups::new(!0, 0b0001), None
         ) {
+            let mut max_distance = self.max_distance;
+            let ray = Ray::new(point, projection.point-point);
+            if let Some(hit) = query_pipeline.cast_ray(&self.space, &ray, max_distance, true, InteractionGroups::new(!0, 0b0100), None) {
+                debug_assert!(hit.1 < max_distance);
+                max_distance = hit.1;
+            }
             self.cache = handle.into();
             let dist_squ = distance_squared(&projection.point, &point);
-            if dist_squ > self.max_distance * self.max_distance  {
-                projection.point + (point - projection.point).normalize() * self.max_distance
+            if dist_squ > max_distance * max_distance  {
+                projection.point + (point - projection.point).normalize() * max_distance
             } else {
                 point
             }
         } else {
             point
         }
+    }
+
+    pub fn add_collider(&mut self, mut collider: Collider) -> Handle {
+        collider.set_collision_groups(InteractionGroups::new(0b0100, !0));
+        self.space.insert(collider).into()
     }
 
     pub fn distance(&self, a: Handle, b: Handle) -> f32 {

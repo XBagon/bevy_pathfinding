@@ -1,3 +1,5 @@
+mod bidirectional_star;
+mod plain;
 mod star;
 
 use std::cmp::Ordering;
